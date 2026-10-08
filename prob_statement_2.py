@@ -1,0 +1,125 @@
+import numpy as np
+import pandas as pd
+from sklearn.preprocessing import PolynomialFeatures, StandardScaler
+from sklearn.pipeline import make_pipeline
+from sklearn.linear_model import Ridge, Lasso, LinearRegression
+from sklearn.model_selection import KFold, cross_validate
+from sklearn.metrics import mean_squared_error, r2_score
+import warnings
+from sklearn.exceptions import ConvergenceWarning
+
+warnings.filterwarnings('ignore', category=ConvergenceWarning)
+
+train_file  = "BT2024264_train_var2.csv"
+test_file   = "BT2024264_test_var2.csv"
+output_file = "BT2024264-pred_var2.csv"
+
+train_df = pd.read_csv(train_file)
+test_df  = pd.read_csv(test_file)
+
+feature_cols = ['x1', 'x2', 'x3']
+
+X_train = train_df[feature_cols]
+y_train = train_df['y']
+X_test  = test_df[feature_cols]
+
+kf = KFold(n_splits=5, shuffle=True, random_state=42)
+
+# range up to degree 10
+degrees = list(range(1, 11))
+alphas = [0.0, 0.001, 0.01, 0.1, 1.0, 10.0, 100.0]
+
+best_score = float('-inf')
+best_degree = None
+best_alpha = None
+best_model_type = None
+
+results = []
+
+print("=" * 75)
+print(f"{'Degree':<8} | {'Model':<8} | {'Alpha':<12} | {'Val MSE':<18} | {'Val R²':<12}")
+print("=" * 75)
+
+for degree in degrees:
+    for alpha in alphas:
+        # evaluate Ridge and Lasso for high-degree feature selection
+        models_to_test = []
+        if alpha == 0.0:
+            models_to_test.append(('Linear', LinearRegression()))
+        else:
+            models_to_test.append(('Ridge', Ridge(alpha=alpha, max_iter=10000)))
+            models_to_test.append(('Lasso', Lasso(alpha=alpha, max_iter=10000)))
+
+        for model_name, reg_model in models_to_test:
+            pipeline = make_pipeline(
+                StandardScaler(),
+                PolynomialFeatures(degree=degree, include_bias=False),
+                reg_model
+            )
+
+            cv_results = cross_validate(
+                pipeline, X_train, y_train,
+                cv=kf,
+                scoring={'mse': 'neg_mean_squared_error', 'r2': 'r2'}
+            )
+
+            cv_mse = -cv_results['test_mse'].mean()
+            cv_r2 = cv_results['test_r2'].mean()
+
+            results.append({
+                'degree': degree,
+                'model': model_name,
+                'alpha': alpha,
+                'val_mse': cv_mse,
+                'val_r2': cv_r2
+            })
+
+            is_best = cv_r2 > best_score
+            if is_best:
+                best_score = cv_r2
+                best_degree = degree
+                best_alpha = alpha
+                best_model_type = model_name
+
+            marker = " <--- (Best)" if is_best else ""
+            print(f"{degree:<8} | {model_name:<8} | {alpha:<12.3f} | {cv_mse:<18.6f} | {cv_r2:<12.6f}{marker}")
+
+    print("-" * 75)
+
+print("=" * 75)
+print(f"\nOPTIMAL SELECTION SUMMARY (PROBLEM STATEMENT 2):")
+print(f"Optimal Degree          : {best_degree}")
+print(f"Optimal Model Type      : {best_model_type}")
+print(f"Optimal Alpha           : {best_alpha}")
+print(f"Best Validation R²      : {best_score:.6f}")
+
+if best_model_type == 'Linear':
+    final_reg = LinearRegression()
+elif best_model_type == 'Ridge':
+    final_reg = Ridge(alpha=best_alpha, max_iter=10000)
+else:
+    final_reg = Lasso(alpha=best_alpha, max_iter=10000)
+
+best_pipeline = make_pipeline(
+    StandardScaler(),
+    PolynomialFeatures(degree=best_degree, include_bias=False),
+    final_reg
+)
+
+best_pipeline.fit(X_train, y_train)
+
+# in-sample training performance metrics
+y_train_pred = best_pipeline.predict(X_train)
+full_train_mse = mean_squared_error(y_train, y_train_pred)
+full_train_r2 = r2_score(y_train, y_train_pred)
+
+print("\n--- Final Model Training Set Performance ---")
+print(f"Full Train MSE : {full_train_mse:.6f}")
+print(f"Full Train R²  : {full_train_r2:.6f}")
+
+y_test_pred = best_pipeline.predict(X_test)
+
+pred_df = pd.DataFrame({'y': y_test_pred})
+pred_df.to_csv(output_file, index=False)
+
+print(f"\nPredictions containing ONLY 'y' saved to: {output_file}")
