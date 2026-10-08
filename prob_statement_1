@@ -10,15 +10,10 @@ from sklearn.exceptions import ConvergenceWarning
 
 warnings.filterwarnings('ignore', category=ConvergenceWarning)
 
-ROLLNO = "BT2024264"
-
 train_file  = "BT2024264_train_var1.csv"
 test_file   = "BT2024264_test_var1.csv"
 output_file = "BT2024264-pred_var1.csv"
 
-# ---------------------------------------------------------
-# 2. Load Data
-# ---------------------------------------------------------
 train_df = pd.read_csv(train_file)
 test_df  = pd.read_csv(test_file)
 
@@ -28,9 +23,7 @@ X_train = train_df[feature_cols]
 y_train = train_df['y']
 X_test  = test_df[feature_cols]
 
-# ---------------------------------------------------------
-# 3. Regularization & Degree Grid Search (Linear, Ridge, Lasso)
-# ---------------------------------------------------------
+# regularization and degree grid search
 kf = KFold(n_splits=5, shuffle=True, random_state=42)
 
 degrees = list(range(1, 11))
@@ -100,9 +93,7 @@ print(f"Optimal Model Type      : {best_model_type}")
 print(f"Optimal Alpha           : {best_alpha}")
 print(f"Best Validation R²      : {best_score:.6f}")
 
-# ---------------------------------------------------------
-# 4. Retrain Best Model on Full Training Set
-# ---------------------------------------------------------
+#retrain best model on entire set
 if best_model_type == 'Linear':
     final_reg = LinearRegression()
 elif best_model_type == 'Ridge':
@@ -126,10 +117,6 @@ full_train_r2 = r2_score(y_train, y_train_pred)
 print("\n--- Final Model Training Set Performance ---")
 print(f"Full Train MSE : {full_train_mse:.6f}")
 print(f"Full Train R²  : {full_train_r2:.6f}")
-
-# ---------------------------------------------------------
-# 5. Predict & Save ONLY Target 'y'
-# ---------------------------------------------------------
 y_test_pred = best_pipeline.predict(X_test)
 
 # Output solely the predicted 'y' column as required
